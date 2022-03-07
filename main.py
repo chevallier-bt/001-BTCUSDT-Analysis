@@ -18,9 +18,18 @@ def main():
                       usecols=["close"])
 
     data = DataSet(raw)
-    data.get_indicators()
-    data.get_trades_long()
-    print(data.frame)
+    data.get_indicators(indicators = [("sma",15)])
+    data.get_labels(profit=0.05/100)  # Calculating labels with a tiny profit to balance out the data
+    data.preprocess()
+
+    #print(data.features_tensor)
+    #print(data.labels_tensor)
+
+
+
+    if False: # Set to True to check labels distribution
+        for item in data.labels.columns:
+            print(np.unique(data.labels[item], return_counts=True))
 
 
 if __name__ == "__main__":

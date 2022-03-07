@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import indicator_functions
+from sklearn import preprocessing
 
 indicator_dict = {
     "sma": indicator_functions.get_sma,
@@ -11,32 +12,50 @@ indicator_dict = {
 class DataSet:
     def __init__(self, df):
         """
-        DataSet class contains the current working frame for the dataset, as well as
+        DataSet class contains the current working features for the dataset, as well as
         all the methods used to process the data.
 
-        :param df: Pandas DataFrame with shape (X, 1). The frame should contain only
+        :param df: Pandas DataFrame with shape (X, 1). The features should contain only
         the closing price, as an absolute price level.
         """
+        n_rows = df.shape[0]  # Calculate number of data points for code readability
+
         assert df.shape[1] == 1, "DataSet initialization failed: Incorrect shape. Expected (X, 1), got {}".format(
             df.shape)
-        self.frame = df.copy()  # Copy the frame to not edit the raw input
+
+        self.features = df.copy()  # Copy the features to not edit the raw input
+
+        # Create the labels frame
+        self.labels = pd.DataFrame(
+            np.zeros(shape=(n_rows, 2)),
+            columns=["win", "loss"])  # Initialize wins and losses as zeros
+        self.labels["nil"] = 1.0  # Initialize nil trades as 1
+
+        # Initialize features and labels tensors for later use
+        self.features_tensor = None
+        self.labels_tensor = None
 
     def get_indicators(self, indicators=None):
         """
-        Create the specified indicators and add them to the frame. If they already exist within the
+        Create the specified indicators and add them to the features. If they already exist within the
         dataset, then copy them instead.
-        :param indicators: Indicators to be added to the frame. Formatted as a tuple with ("func", period)
+        :param indicators: Indicators to be added to the features. Formatted as a tuple with ("func", period)
         where the func is one of the available functions in the indicator dictionary.
         """
         if indicators is None:
             indicators = [("sma", 10), ("std", 10)]
 
+        max_period = 0
+
         for item in indicators:
             func, period = item
-            self.frame[func] = indicator_dict[func](self.frame["close"], period)
+            if period > max_period:
+                max_period = period
+            self.features["{}-{}".format(func, period)] = indicator_dict[func](self.features["close"], period)
 
-    def get_trades_long(self, profit=0.5 / 100, reward_risk=2.0, n_future=5,
-                        append_frame=True, return_frame=False):
+        self.features = self.features.iloc[max_period:]
+
+    def get_labels(self, profit=0.5 / 100, reward_risk=2.0, n_future=5):
         """
         calc_trades method will calculate if a trade made at each
         data point would result in a take-profit or a stop-loss.
@@ -48,36 +67,66 @@ class DataSet:
         :param profit: The desired profit per trade, in percentage decimal form
         :param reward_risk: The reward-to-risk ratio for the trades
         :param n_future: The amount of time steps into the future to execute on
-        :param append_frame: Append the result to self.frame
-        :param return_frame: Return the calculated frame (self.frame["long"])
         :return: None. If return_frame is true, will return DataFrame whose entries
         are either [0,0,0], for stop-loss, indeterminate, or take-profit, respectively.
         """
-        df = self.frame["close"]  # Make sure we only have the "close" column
-        long_trades = pd.DataFrame(np.zeros(shape=df.shape))  # Initialize output frame with zeros
+        features = self.features["close"]  # Make sure we only have the "close" column
+        labels = self.labels  # Pull the labels frame for encoding
 
-        for i, val in enumerate(df[-n_future:]):  # Iterate over the close frame while avoiding an IndexError
+        for i, val in enumerate(features[:-n_future]):  # Iterate over the close features while avoiding an IndexError
             # take_profit = val * (1 + profit) The calculation for the take-profit level
             # stop_loss = val * (1 - (profit / reward_risk)) The calculation for the stop-loss level
 
             for k in range(i, i + n_future):  # Iterate over the next n_future entries in 'close'
-                if df.iloc[k] >= val * (1 + profit):  # If the value is above take-profit
-                    long_trades.iloc[i] = (1, 0, 0)  # Return 1 for a successful trade
+                if features.iloc[k] >= val * (1 + profit):  # If the value is above take-profit
+                    labels["win"].iloc[i] = 1  # Return 1 for a successful trade
+                    labels["nil"].iloc[i] = 0  # Trade was executed, update nil column to 0
                     break  # The take-profit was triggered, so break the current loop
-                elif df.iloc[k] <= val * (1 - (profit / reward_risk)):  # If the value is below stop-loss
-                    long_trades.iloc[i] = (0, 1, 0)  # Return -1 for a failed trade
+                elif features.iloc[k] <= val * (1 - (profit / reward_risk)):  # If the value is below stop-loss
+                    labels["loss"].iloc[i] = 1  # Return -1 for a failed trade
+                    labels["nil"].iloc[i] = 0  # Trade was executed, update nil column to 0
                     break  # The stop-loss was triggered, so break the current loop
-
-        #  Conditional function parameters
-        if append_frame:
-            self.frame["long"] = long_trades  # Append the results to self.frame
-        if return_frame:
-            return long_trades  # Return the results frame
-
         return None
 
-    def scale(self):
-        pass
+    def preprocess(self, feature_window_size=5):
+        """
+        Scales all features data to be equal to the percent difference since the last data point. This allows negative
+        values. Next, the data is re-normalized between -1 to 1 for use in the network. Lastly, the features and labels
+        are reformatted into tensors of shape (batches, timesteps, features) for use in the LSTM layer. Note that for
+        the labels tensor, the timesteps is always set to 1.
+        :param feature_window_size: The window size of the timesteps for the features tensor of shape (batches,
+            timesteps, features)
+        :return: None
+        """
+
+        assert isinstance(feature_window_size, int), "feature_window_size must be an integer. Found {}".format(
+            str(type(feature_window_size)))
+
+        # Scale the data using percent difference between timesteps, and then re-normalize from -1 to 1
+        for item in self.features.columns:  # Iterate over all features
+            df = self.features[item]  # Local variable for ease of writing
+
+            for i in range(df.shape[0]-1, 0, -1):  # Iterate backwards over all elements, excluding the 0 position
+                df.iloc[i] = 100*(df.iloc[i]-df.iloc[i-1]) / df.iloc[i-1]  # Percent difference from last time step
+
+            df.iloc[0] = 0  # Initialize first value as zero
+
+        # Reshape the features frame into a tensor of shape (batches, window_size, features)
+        batches = self.features.shape[0] - feature_window_size
+        feature_dim = self.features.shape[1]
+        self.features_tensor = np.empty(shape=(batches, feature_window_size, feature_dim), dtype="float32")
+        self.labels_tensor = np.empty(shape=(batches, 1, 3), dtype="float32")
+
+        for i in range(batches):
+            self.features_tensor[i] = self.features.iloc[i: i+feature_window_size]
+
+        for i in range(batches):
+            self.labels_tensor[i] = self.labels.iloc[i]
+
+        for sample in self.features_tensor:
+            sample = preprocessing.scale(sample, with_mean=False, axis=0)
+
+        return None
 
     def get_splits(self):
         # Function to return test-train split of the data set
@@ -87,5 +136,5 @@ class DataSet:
         pass
 
     def clear(self):
-        # Reset the frame to be just the close value
-        self.frame = self.frame["close"]
+        # Reset the features to be just the close value
+        self.features = self.features["close"]
