@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from DataSet import DataSet
 
-from tensorflow.keras.layers import Dense, LSTM, Bidirectional
+from tensorflow.keras.layers import Dense, LSTM
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
 
@@ -18,7 +18,9 @@ def main():
                       usecols=["close"])
 
     data = DataSet(raw)
+    data.get_indicators()
     data.get_trades_long()
+    print(data.frame)
 
 
 if __name__ == "__main__":
