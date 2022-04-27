@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import indicator_functions
 from sklearn import preprocessing
+from sklearn.model_selection import train_test_split
 
 indicator_dict = {
     "sma": indicator_functions.get_sma,
@@ -31,9 +32,11 @@ class DataSet:
             columns=["win", "loss"])  # Initialize wins and losses as zeros
         self.labels["nil"] = 1.0  # Initialize nil trades as 1
 
-        # Initialize features and labels tensors for later use
-        self.features_tensor = None
-        self.labels_tensor = None
+        # Initialize training and testing tensors for later use
+        self.x_train = None
+        self.y_train = None
+        self.x_test = None
+        self.y_test = None
 
     def get_indicators(self, indicators=None):
         """
@@ -55,7 +58,7 @@ class DataSet:
 
         self.features = self.features.iloc[max_period:]
 
-    def get_labels(self, profit=0.5 / 100, reward_risk=2.0, n_future=5):
+    def get_labels(self, profit=0.5/100, reward_risk=2.0, n_future=5):
         """
         calc_trades method will calculate if a trade made at each
         data point would result in a take-profit or a stop-loss.
@@ -74,7 +77,7 @@ class DataSet:
         labels = self.labels  # Pull the labels frame for encoding
 
         for i, val in enumerate(features[:-n_future]):  # Iterate over the close features while avoiding an IndexError
-            # take_profit = val * (1 + profit) The calculation for the take-profit level
+            # take_profit = val * (1 + profit) = val + val*profit The calculation for the take-profit level
             # stop_loss = val * (1 - (profit / reward_risk)) The calculation for the stop-loss level
 
             for k in range(i, i + n_future):  # Iterate over the next n_future entries in 'close'
@@ -88,12 +91,13 @@ class DataSet:
                     break  # The stop-loss was triggered, so break the current loop
         return None
 
-    def preprocess(self, feature_window_size=5):
+    def preprocess(self, feature_window_size=5, test_split=0.5):
         """
         Scales all features data to be equal to the percent difference since the last data point. This allows negative
         values. Next, the data is re-normalized between -1 to 1 for use in the network. Lastly, the features and labels
         are reformatted into tensors of shape (batches, timesteps, features) for use in the LSTM layer. Note that for
         the labels tensor, the timesteps is always set to 1.
+        :param test_split: Test-train ratio
         :param feature_window_size: The window size of the timesteps for the features tensor of shape (batches,
             timesteps, features)
         :return: None
@@ -114,19 +118,26 @@ class DataSet:
         # Reshape the features frame into a tensor of shape (batches, window_size, features)
         batches = self.features.shape[0] - feature_window_size
         feature_dim = self.features.shape[1]
-        self.features_tensor = np.empty(shape=(batches, feature_window_size, feature_dim), dtype="float32")
-        self.labels_tensor = np.empty(shape=(batches, 1, 3), dtype="float32")
+        features_tensor = np.empty(shape=(batches, feature_window_size, feature_dim), dtype="float32")
 
+        labels_trimmed = self.labels[:batches]
         for i in range(batches):
-            self.features_tensor[i] = self.features.iloc[i: i+feature_window_size]
+            features_tensor[i] = self.features.iloc[i: i+feature_window_size]
 
-        for i in range(batches):
-            self.labels_tensor[i] = self.labels.iloc[i]
+        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(
+            features_tensor, labels_trimmed, test_size=test_split, shuffle=False)
 
-        for sample in self.features_tensor:
-            sample = preprocessing.scale(sample, with_mean=False, axis=0)
+        scaler = preprocessing.StandardScaler(with_mean=False)
+
+        for batch in self.x_train:
+            scaler.partial_fit(batch)
+
+        for tensor in [self.x_train, self.x_test]:
+            for batch in tensor:
+                batch = scaler.transform(batch)  # This only works because np arrays are mutable!
 
         return None
+
 
     def get_splits(self):
         # Function to return test-train split of the data set

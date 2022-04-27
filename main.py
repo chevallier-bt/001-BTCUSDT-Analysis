@@ -22,14 +22,17 @@ def main():
     data.get_labels(profit=0.05/100)  # Calculating labels with a tiny profit to balance out the data
     data.preprocess()
 
-    #print(data.features_tensor)
-    #print(data.labels_tensor)
-
-
-
-    if False: # Set to True to check labels distribution
+    if True:  # Set to True to check labels distribution
         for item in data.labels.columns:
-            print(np.unique(data.labels[item], return_counts=True))
+            print("{}: {}".format(item, np.unique(data.labels[item], return_counts=True)[1][1]))
+
+    model = tf.keras.Sequential()
+    model.add(LSTM(64, activation="relu"))
+    model.add(Dense(32, activation="relu"))
+    model.add(Dense(16, activation="relu"))
+    model.add(Dense(3, activation="softmax"))
+    model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["categorical_accuracy"])
+    model.fit(data.x_train, data.y_train, epochs=5)
 
 
 if __name__ == "__main__":
