@@ -5,6 +5,10 @@ Using a 1m BTC-USDT chart, the close price is used in a multiclass classificatio
 
 The jupyter notebook file is the first implementation and exploration of this idea. The .py files are the refactored implementation, and are still a work in progress.
 
+Later update: The project is still incomplete, I took some time away from it. If I were to revisit, my first priorities would be:
+  1) Testing different approaches to solve the data imbalance problem through use of: upscaling/downscaling, changing trading hyperparameters
+  2) Once the data imbalance is addressed, I could start properly tuning the model using some kind of random search or grid search.
+
 ## Trades
 Trades are considered a "long trade", whereby the individual purchases at a certain price, and attempts to sell at a later, higher price. Upon purchasing an asset, the individual specifies the "take-profit" and "stop-loss" levels. The take-profit level defines the price at which the purchased asset will be automatically re-sold for positive profit. The stop-loss specifies at when the asset will be sold for negative profit. The take-profit and stop-loss levels can be completely specified by the closeing price, as well as the following parameters: profit, reward-to-risk ratio. The profit is the percentage profit in decimal form (e.g. 5% -> 0.05). The reward-to-risk ratio is the ratio between the potential profit, and the potential loss, as specified by the take-profit and stop-loss, respectively.
 
