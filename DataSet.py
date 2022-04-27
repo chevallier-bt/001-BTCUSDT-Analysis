@@ -120,7 +120,7 @@ class DataSet:
         feature_dim = self.features.shape[1]
         features_tensor = np.empty(shape=(batches, feature_window_size, feature_dim), dtype="float32")
 
-        labels_trimmed = self.labels[:batches]
+        labels_trimmed = self.labels[feature_window_size:]
         for i in range(batches):
             features_tensor[i] = self.features.iloc[i: i+feature_window_size]
 
