@@ -5,7 +5,7 @@ Using a 1m BTC-USDT chart, the close price is used in a multiclass classificatio
 
 The jupyter notebook file is the first implementation and exploration of this idea. The .py files are the refactored implementation, and are still a work in progress.
 
-Later update: The project is still incomplete, I took some time away from it. If I were to revisit, my first priorities would be:
+Update: The project is still incomplete, I took some time away from it. If I were to revisit, my first priorities would be:
   1) Testing different approaches to solve the data imbalance problem through use of: upscaling/downscaling, changing trading hyperparameters
   2) Once the data imbalance is addressed, I could start properly tuning the model using some kind of random search or grid search.
 
